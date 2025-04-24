@@ -102,10 +102,10 @@ def evaluate(model, loader, device):
 def main():
     parser = argparse.ArgumentParser(description="Train disease classifier")
     parser.add_argument('--data', type=str, default='data.csv', help='Path to CSV file')
-    parser.add_argument('--epochs', type=int, default=1000, help='Number of epochs')
+    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate')
-    parser.add_argument('--hidden', nargs='+', type=int, default=[128, 64],
+    parser.add_argument('--hidden', nargs='+', type=int, default=[128, 128],
                         help='List of hidden layer sizes')
     parser.add_argument('--dropout', type=float, default=0.5, help='Dropout probability')
     args = parser.parse_args()
