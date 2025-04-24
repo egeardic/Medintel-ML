@@ -9,12 +9,13 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import joblib
+import os
 
 # 🔧 Sabitler
 SEED = 42
 CSV_PATH = 'Final_Augmented_dataset_Diseases_and_Symptoms.csv'
-BATCH_SIZE = 64
-EPOCHS = 20
+BATCH_SIZE = 1024
+EPOCHS = 40
 LEARNING_RATE = 0.001
 
 # 🎯 Cihaz seçimi
@@ -30,22 +31,11 @@ class DiseaseClassifier(nn.Module):
     def __init__(self, input_size, num_classes):
         super(DiseaseClassifier, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(input_size, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(input_size, 896),
+            nn.BatchNorm1d(896),
             nn.ReLU(),
             nn.Dropout(0.3),
-
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-
-            nn.Linear(256, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-
-            nn.Linear(128, num_classes)
+            nn.Linear(896, num_classes)
         )
 
     def forward(self, x):
@@ -127,15 +117,11 @@ def evaluate(model, loader, device):
             correct += (predicted == labels).sum().item()
     return correct / total * 100
 
-# 🚀 Ana fonksiyon
+# 🚀 Ana eğitim fonksiyonu
 def main():
     print("🚀 Starting pipeline...\n")
     train_loader, test_loader, input_size, num_classes, label_encoder = load_and_preprocess_data()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"🖥️ Using device: {device}")
-
-    print("\n🧠 Building model...")
     model = DiseaseClassifier(input_size, num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -143,7 +129,7 @@ def main():
 
     best_accuracy = 0
     patience_counter = 0
-    patience = 7  # 7 epoch boyunca gelişme yoksa dur
+    patience = 7
 
     print("\n📈 Beginning training...\n")
     for epoch in range(EPOCHS):
@@ -167,16 +153,58 @@ def main():
             print("🛑 Early stopping triggered.")
             break
 
-    # Modeli tekrar yükle (en iyi olanı)
     model.load_state_dict(torch.load("best_model.pth"))
 
     print("\n🧪 Final Evaluation...")
     final_acc = evaluate(model, test_loader, device)
     print(f"\n✅ Final Accuracy: {final_acc:.2f}%")
 
-    # Label encoder kaydı
     joblib.dump(label_encoder, "label_encoder.pkl")
     print(f"💾 Label encoder saved.")
 
+# 🔁 Ek eğitim (devam ettirme) fonksiyonu
+def continue_training(additional_epochs=10):
+    print("🔁 Continuing training...\n")
+    train_loader, test_loader, input_size, num_classes, label_encoder = load_and_preprocess_data()
+
+    model = DiseaseClassifier(input_size, num_classes).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3, verbose=True)
+
+    best_accuracy = 0
+
+    if os.path.exists("best_model.pth"):
+        model.load_state_dict(torch.load("best_model.pth"))
+        print("📥 Loaded best saved model for further training.")
+        best_accuracy = evaluate(model, test_loader, device)
+        print(f"🏁 Loaded Model Accuracy: {best_accuracy:.2f}%")
+
+    patience_counter = 0
+    patience = 7
+
+    for epoch in range(additional_epochs):
+        loss = train(model, train_loader, criterion, optimizer, epoch, device)
+        accuracy = evaluate(model, test_loader, device)
+        print(f"📊 Epoch [Continued {epoch+1}/{additional_epochs}] - Loss: {loss:.4f} | Accuracy: {accuracy:.2f}%")
+
+        scheduler.step(accuracy)
+
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            patience_counter = 0
+            torch.save(model.state_dict(), "best_model.pth")
+            print(f"💾 Improved model saved with accuracy {accuracy:.2f}%")
+        else:
+            patience_counter += 1
+            print(f"⏳ No improvement. Patience: {patience_counter}/{patience}")
+
+        if patience_counter >= patience:
+            print("🛑 Early stopping triggered.")
+            break
+
+    print(f"\n✅ Continued Training Complete. Best Accuracy: {best_accuracy:.2f}%")
+
 if __name__ == '__main__':
-    main()
+    # main()  # Uncomment to run initial training
+    continue_training(additional_epochs=20)  # Uncomment to continue training
